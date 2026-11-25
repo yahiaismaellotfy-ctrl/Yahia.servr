@@ -1,0 +1,39 @@
+
+name: YAHIA DISTROVA BOT CHECK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download project
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Check main file
+        run: node --check index.js
+
+      - name: Check modules
+        run: |
+          node --check connection.mjs
+          node --check handler.mjs
+          node --check config.mjs
+
+      - name: Check plugins
+        run: |
+          for f in plugins/*.mjs lib/*.mjs; do
+            node --check "$f"
+          done
