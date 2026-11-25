@@ -1,5 +1,5 @@
 
-name: YAHIA DISTROVA BOT CHECK
+name: YAHIA DISTROVA BOT
 
 on:
   workflow_dispatch:
@@ -7,12 +7,16 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
-  check:
+  setup-and-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
-      - name: Download project
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -20,20 +24,59 @@ jobs:
         with:
           node-version: 20
 
+      - name: Find and extract bot ZIP
+        shell: bash
+        run: |
+          set -e
+          mkdir -p extracted
+          ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No bot ZIP found!"
+            exit 1
+          fi
+
+          echo "ZIP found: $ZIP_FILE"
+          unzip -q "$ZIP_FILE" -d extracted
+
+      - name: Locate package.json
+        shell: bash
+        run: |
+          set -e
+          PKG=$(find extracted -type f -name package.json | head -n 1)
+
+          if [ -z "$PKG" ]; then
+            echo "ERROR: package.json not found!"
+            exit 1
+          fi
+
+          BOT_DIR=$(dirname "$PKG")
+          echo "BOT_DIR=$BOT_DIR" >> "$GITHUB_ENV"
+          echo "Bot folder: $BOT_DIR"
+
       - name: Install dependencies
-        run: npm install
+        working-directory: ${{ env.BOT_DIR }}
+        run: npm install --no-audit --no-fund
 
       - name: Check main file
+        working-directory: ${{ env.BOT_DIR }}
         run: node --check index.js
 
-      - name: Check modules
+      - name: Check bot modules
+        shell: bash
+        working-directory: ${{ env.BOT_DIR }}
         run: |
-          node --check connection.mjs
-          node --check handler.mjs
-          node --check config.mjs
+          set -e
+          find . -type f \( -name "*.mjs" -o -name "*.js" \) \
+            -not -path "./node_modules/*" \
+            -not -path "./.git/*" \
+            -print0 | while IFS= read -r -d '' file; do
+              node --check "$file"
+            done
 
-      - name: Check plugins
-        run: |
-          for f in plugins/*.mjs lib/*.mjs; do
-            node --check "$f"
-          done
+      - name: Verify startup script
+        working-directory: ${{ env.BOT_DIR }}
+        run: npm run
+
+      - name: Finished
+        run: echo "All installation and syntax checks passed!"
